@@ -18,7 +18,26 @@ Al arrancar el PC entra en sBID con tu usuario, mira si hay días o informes pen
 3. Doble clic en **`1-probar.bat`**: comprueba el login, cuenta pendientes y enseña qué rellenaría, sin guardar nada.
 4. Doble clic en **`2-instalar.bat`**: lo deja en el arranque de Windows. Para quitarlo, `quitar.bat`.
 
-Desde entonces, cada vez que enciendes el PC espera 45 s a que haya red y ejecuta la comprobación. El resultado queda en `windows/sbid-daily.log` y, si registra algo o falla, sale una notificación de Windows.
+Desde entonces, cada vez que enciendes el PC se abre una ventana con un **panel de colores**: espera 45 s a que haya red, entra en sBID y va mostrando en vivo qué hace (estado, contadores, barra de progreso y las últimas acciones). Al terminar se cierra sola a los 6 s; si algo falla o se para, se queda 60 s para que lo leas (cualquier tecla la cierra antes). El resultado también queda en `windows/sbid-daily.log`.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  sBID autofill                                 28/10/2026 18:08  │
+└──────────────────────────────────────────────────────────────────┘
+
+  Estado      + Completado: 16 registrados
+  Usuario     alumne
+  Pendientes  30      Registrados 16    Simulados 0     Saltados 5
+
+  ████████████████████████████████████████████  100%
+
+  Actividad
+   + Informe 2026-06-30 -> MOLT ADEQUADA
+   - Salto 13/06/2026: fin de semana
+   + Guardado 2026-06-15 -> 1.5:2h 2.4:1.5h 1.4:0.5h
+```
+
+`ver-panel.bat` enseña el panel con datos de mentira, sin entrar en sBID. Si prefieres que no abra ninguna ventana: `sbid-daily.ps1 -Install -Hidden` (en ese caso avisa con una notificación de Windows).
 
 - `windows/config.ps1` está en `.gitignore`. **No lo subas nunca**: es tu contraseña en claro. También puedes usar las variables de entorno `SBID_USER` y `SBID_PASS`. Protege el PC (clave de Windows, disco cifrado).
 - Por defecto rellena hasta ayer, y el día de hoy solo si el PC arranca después de `FillTodayAfter` (18:00). Salta fines de semana y `SkipDates`.
@@ -26,7 +45,7 @@ Desde entonces, cada vez que enciendes el PC espera 45 s a que haya red y ejecut
 - Si el login falla **no reintenta** (para no bloquear tu cuenta); solo reintenta si no hay red.
 - **Ojo:** no sabe si ese día fuiste a trabajar. Pon vacaciones, bajas y festivos en `SkipDates`, o dará horas igualmente.
 
-Opciones del script: `-Check` (solo login y recuento), `-DryRun` (simula), `-Install` / `-Uninstall` (arranque de Windows).
+Opciones del script: `-Check` (solo login y recuento), `-DryRun` (simula), `-Ui` (con panel), `-UiDemo` (panel de prueba), `-Install [-Hidden]` / `-Uninstall` (arranque de Windows). En `config.ps1` puedes ajustar `UiCloseSeconds` y `UiErrorCloseSeconds`.
 
 ## Rellenar a mano desde el navegador
 

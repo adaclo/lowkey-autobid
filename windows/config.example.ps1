@@ -24,5 +24,8 @@ $Config = @{
     FillReports    = $true      # informes periodicos
     Rating         = 'auto'     # 'auto' = la valoracion mas alta
     MaxPerRun      = 60         # tope de tareas por ejecucion
-    Notify         = 'changes'  # 'changes' | 'errors' | 'all' | 'none'
+    Notify         = 'changes'  # notificaciones de Windows (solo sin panel): 'changes' | 'errors' | 'all' | 'none'
+
+    UiCloseSeconds      = 6     # el panel se cierra solo X segundos despues de terminar bien
+    UiErrorCloseSeconds = 60    # ...y X segundos si algo falla o se para (cualquier tecla lo cierra)
 }

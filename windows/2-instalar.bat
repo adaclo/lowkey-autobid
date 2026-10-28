@@ -1,5 +1,5 @@
 @echo off
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -File sbid-daily.ps1 -Install
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sbid-daily.ps1" -Install
 echo.
 pause

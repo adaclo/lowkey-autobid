@@ -199,3 +199,15 @@ test('-Check solo cuenta, no guarda', winOnly, async () => {
     m.server.close();
   }
 });
+
+test('-Startup con salida redirigida: sin panel, mismo resultado', winOnly, async () => {
+  const m = await startMock([day('20260601')]);
+  try {
+    const r = await runPs(m, { StartDelaySeconds: 0 }, { now: '2026-07-01T09:00:00', flags: ['-Startup'] });
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(Object.keys(m.state.saved), ['20260601']);
+    assert.match(r.out, /Arranque: espero 0s/);
+  } finally {
+    m.server.close();
+  }
+});
