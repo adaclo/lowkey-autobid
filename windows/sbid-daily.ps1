@@ -285,12 +285,33 @@ $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like
 $script:Sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 
 # ---------------------------------------------------------------- HTTP
+$script:Referer = "$Origin/sBid/"
+$script:LastResp = $null
+
 function Http([string]$url, [string]$body) {
-    $p = @{ Uri = $url; WebSession = $script:Sess; UseBasicParsing = $true; UserAgent = $UA; MaximumRedirection = 6 }
+    $p = @{
+        Uri = $url; WebSession = $script:Sess; UseBasicParsing = $true; UserAgent = $UA; MaximumRedirection = 6
+        Headers = @{ 'Referer' = $script:Referer; 'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'; 'Accept-Language' = 'ca,es;q=0.9,en;q=0.8' }
+    }
     if ($PSBoundParameters.ContainsKey('body') -and $null -ne $body) {
         $p.Method = 'POST'; $p.Body = $body; $p.ContentType = 'application/x-www-form-urlencoded'
+        $p.Headers['Origin'] = $Origin
     }
-    return (Invoke-WebRequest @p).Content
+    $r = Invoke-WebRequest @p
+    $uri = ''; try { $uri = $r.BaseResponse.ResponseUri.AbsoluteUri } catch { }
+    $script:LastResp = [pscustomobject]@{ Uri = $uri; Status = [int]$r.StatusCode; Len = $r.Content.Length }
+    return $r.Content
+}
+
+# Deja en el log lo necesario para entender por que sBID no reconoce la sesion (sin contrasenyas)
+function Diag([string]$what, [string]$html) {
+    try {
+        $ck = @($script:Sess.Cookies.GetCookies([uri]"$Mod/Agenda") | ForEach-Object { $_.Name + '(' + $_.Path + ')' }) -join ', '
+        $txt = ($html -replace '(?is)<script.*?</script>|<style.*?</style>|<[^>]+>', ' ') -replace '\s+', ' '
+        if ($txt.Length -gt 220) { $txt = $txt.Substring(0, 220) }
+        $lr = $script:LastResp
+        Log ("Diagnostico ({0}): url={1} status={2} bytes={3} cookies=[{4}] texto='{5}'" -f $what, $lr.Uri, $lr.Status, $lr.Len, $ck, $txt) 'warn'
+    } catch { }
 }
 
 function Enc($pairs) {
@@ -311,11 +332,15 @@ function Retry([scriptblock]$f) {
 }
 
 function Login {
+    $script:Referer = "$Origin/sBid/"
     [void](Http "$Mod/Login?initial=yes")
     $b = [ordered]@{ idTask = ''; hashTask = ''; moduleaction = 'doLogin'; fwBrowser = 'Chrome'; username = $cfg.Username; password = $cfg.Password }
+    $script:Referer = "$Mod/Login?initial=yes"
     [void](Http "$Mod/Login" (Enc $b))
+    $script:Referer = "$Origin/sBid/"
     $ag = Http "$Mod/Agenda?moduleaction=show&clearBackStack=true"
     if ($ag -notmatch 'id="heading1"' -or $ag -match 'id="loginForm"') {
+        Diag 'login' $ag
         throw 'LOGIN: login rechazado o pagina inesperada; revisa usuario y contrasenya.'
     }
 }
@@ -333,7 +358,10 @@ function Attr([string]$tag, [string]$name) {
 
 function GetAgenda {
     $h = Http "$Mod/Agenda?moduleaction=show&clearBackStack=true"
-    if ($h -match 'id="loginForm"') { throw 'LOGIN: la sesion ha caducado.' }
+    if ($h -match 'id="loginForm"') {
+        Diag 'agenda' $h
+        throw 'LOGIN: la sesion ha caducado.'
+    }
     $count = '?'
     $mc = [regex]::Match($h, 'id="heading1"[\s\S]{0,600}?badge[^>]*>\s*(\d+)')
     if ($mc.Success) { $count = $mc.Groups[1].Value }

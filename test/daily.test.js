@@ -47,7 +47,7 @@ function startMock(pending) {
         state.loggedIn.clear();
         return send(200, 'bye');
       }
-      if (!authed) return send(200, '<form id="loginForm"></form>');
+      if (!authed || !req.headers.referer) return send(200, '<form id="loginForm"></form>');
 
       if (u.pathname === '/sBid/modules/Agenda') {
         const items = state.pending.slice(0, 3).map((p) =>
