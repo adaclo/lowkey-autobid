@@ -6,7 +6,7 @@
     sbid-daily.ps1 -DryRun      entra y muestra que rellenaria, SIN guardar nada
     sbid-daily.ps1 -Check       solo prueba el login y cuenta pendientes
     sbid-daily.ps1 -Ui          igual, con panel de colores en la consola
-    sbid-daily.ps1 -UiDemo      enseña el panel con datos de mentira (no entra en sBID)
+    sbid-daily.ps1 -UiDemo      ensenya el panel con datos de mentira (no entra en sBID)
     sbid-daily.ps1 -Install     lo pone en el arranque de Windows (carpeta Inicio), con panel
     sbid-daily.ps1 -Install -Hidden   igual pero sin ventana
     sbid-daily.ps1 -Uninstall   lo quita del arranque
