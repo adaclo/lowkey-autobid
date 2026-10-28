@@ -300,17 +300,29 @@ function Http([string]$url, [string]$body) {
     $r = Invoke-WebRequest @p
     $uri = ''; try { $uri = $r.BaseResponse.ResponseUri.AbsoluteUri } catch { }
     $script:LastResp = [pscustomobject]@{ Uri = $uri; Status = [int]$r.StatusCode; Len = $r.Content.Length }
+    # rastro para el diagnostico: nada de valores de cookies ni de contrasenyas
+    try {
+        $m = 'GET'; if ($p.Method) { $m = $p.Method }
+        $setck = ''
+        if ($r.Headers['Set-Cookie']) { $setck = ([string]$r.Headers['Set-Cookie']) -replace '(?<=^|,\s)([A-Za-z0-9_.-]+)=([^;,]{0,3})[^;,]*', '$1=$2..' }
+        $jar = @($script:Sess.Cookies.GetCookies([uri]"$Mod/Agenda") | ForEach-Object { $_.Name }) -join '+'
+        $login = if ($r.Content -match 'id="loginForm"') { 'LOGINFORM' } elseif ($r.Content -match 'id="heading1"') { 'agenda' } else { 'otra' }
+        $short = ([uri]$url).AbsolutePath -replace '^/sBid/', ''
+        [void]$script:Trace.Add(('{0} {1} -> {2} {3}B {4} jar={5} set-cookie=[{6}]' -f $m, $short, [int]$r.StatusCode, $r.Content.Length, $login, $jar, $setck))
+    } catch { }
     return $r.Content
 }
+$script:Trace = New-Object System.Collections.ArrayList
 
 # Deja en el log lo necesario para entender por que sBID no reconoce la sesion (sin contrasenyas)
 function Diag([string]$what, [string]$html) {
     try {
         $ck = @($script:Sess.Cookies.GetCookies([uri]"$Mod/Agenda") | ForEach-Object { $_.Name + '(' + $_.Path + ')' }) -join ', '
         $txt = ($html -replace '(?is)<script.*?</script>|<style.*?</style>|<[^>]+>', ' ') -replace '\s+', ' '
-        if ($txt.Length -gt 220) { $txt = $txt.Substring(0, 220) }
+        if ($txt.Length -gt 120) { $txt = $txt.Substring(0, 120) }
         $lr = $script:LastResp
         Log ("Diagnostico ({0}): url={1} status={2} bytes={3} cookies=[{4}] texto='{5}'" -f $what, $lr.Uri, $lr.Status, $lr.Len, $ck, $txt) 'warn'
+        foreach ($t in $script:Trace) { Log ("  rastro: $t") 'warn' }
     } catch { }
 }
 
