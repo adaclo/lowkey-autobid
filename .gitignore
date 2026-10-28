@@ -1,0 +1,3 @@
+node_modules/
+windows/config.ps1
+*.log

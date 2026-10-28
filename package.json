@@ -1,0 +1,10 @@
+{
+  "name": "sbid-autofill",
+  "version": "1.0.0",
+  "description": "Rellena las activitats diaries e informes periodics de sBID (consola del navegador o PowerShell al arrancar Windows)",
+  "main": "sbid-autofill.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
