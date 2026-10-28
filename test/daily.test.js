@@ -38,8 +38,8 @@ function startMock(pending) {
       if (u.pathname === '/sBid/modules/Login' && req.method === 'POST') {
         state.logins++;
         if (body.get('username') === 'alumne' && body.get('password') === 'secret' && body.get('moduleaction') === 'doLogin') {
-          state.loggedIn.add('abc123');
-          return send(302, '', { Location: '/sBid/modules/Agenda?moduleaction=show' });
+          state.loggedIn.add('rot789');
+          return send(302, '', { Location: '/sBid/modules/Agenda?moduleaction=show', 'Set-Cookie': 'JSESSIONID=rot789; Path=/sBid; Secure; HttpOnly' });
         }
         return send(200, '<form id="loginForm"></form>');
       }

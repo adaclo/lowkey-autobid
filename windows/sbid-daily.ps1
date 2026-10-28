@@ -282,46 +282,88 @@ $Inv = [Globalization.CultureInfo]::InvariantCulture
 $Origin = $BaseUrl.TrimEnd('/')
 $Mod = "$Origin/sBid/modules"
 $UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
-$script:Sess = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+Add-Type -AssemblyName System.Net.Http
+$script:Cookies = [ordered]@{}   # cookies a mano: asi se ven todas las respuestas, tambien las de redireccion
+$handler = New-Object System.Net.Http.HttpClientHandler
+$handler.AllowAutoRedirect = $false
+$handler.UseCookies = $false
+$handler.AutomaticDecompression = [System.Net.DecompressionMethods]::GZip -bor [System.Net.DecompressionMethods]::Deflate
+$script:Client = New-Object System.Net.Http.HttpClient($handler)
+$script:Client.Timeout = [TimeSpan]::FromSeconds(60)
 
 # ---------------------------------------------------------------- HTTP
 $script:Referer = "$Origin/sBid/"
 $script:LastResp = $null
 
 function Http([string]$url, [string]$body) {
-    $p = @{
-        Uri = $url; WebSession = $script:Sess; UseBasicParsing = $true; UserAgent = $UA; MaximumRedirection = 6
-        Headers = @{ 'Referer' = $script:Referer; 'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'; 'Accept-Language' = 'ca,es;q=0.9,en;q=0.8' }
-    }
-    if ($PSBoundParameters.ContainsKey('body') -and $null -ne $body) {
-        $p.Method = 'POST'; $p.Body = $body; $p.ContentType = 'application/x-www-form-urlencoded'
-        $p.Headers['Origin'] = $Origin
-    }
-    $r = Invoke-WebRequest @p
-    $uri = ''; try { $uri = $r.BaseResponse.ResponseUri.AbsoluteUri } catch { }
-    $script:LastResp = [pscustomobject]@{ Uri = $uri; Status = [int]$r.StatusCode; Len = $r.Content.Length }
-    # rastro para el diagnostico: nada de valores de cookies ni de contrasenyas
-    try {
-        $m = 'GET'; if ($p.Method) { $m = $p.Method }
+    $method = 'GET'; $send = $null
+    if ($PSBoundParameters.ContainsKey('body') -and $null -ne $body) { $method = 'POST'; $send = $body }
+    for ($hop = 0; $hop -lt 8; $hop++) {
+        $req = New-Object System.Net.Http.HttpRequestMessage -ArgumentList (New-Object System.Net.Http.HttpMethod $method), $url
+        [void]$req.Headers.TryAddWithoutValidation('User-Agent', $UA)
+        [void]$req.Headers.TryAddWithoutValidation('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8')
+        [void]$req.Headers.TryAddWithoutValidation('Accept-Language', 'ca,es;q=0.9,en;q=0.8')
+        [void]$req.Headers.TryAddWithoutValidation('Referer', $script:Referer)
+        if ($script:Cookies.Count -gt 0) {
+            [void]$req.Headers.TryAddWithoutValidation('Cookie', (($script:Cookies.Keys | ForEach-Object { $_ + '=' + $script:Cookies[$_] }) -join '; '))
+        }
+        if ($method -eq 'POST') {
+            [void]$req.Headers.TryAddWithoutValidation('Origin', $Origin)
+            $req.Content = New-Object System.Net.Http.StringContent -ArgumentList $send, ([Text.Encoding]::UTF8)
+            $req.Content.Headers.ContentType = New-Object System.Net.Http.Headers.MediaTypeHeaderValue 'application/x-www-form-urlencoded'
+        }
+        $resp = $script:Client.SendAsync($req).GetAwaiter().GetResult()
+        $status = [int]$resp.StatusCode
+
+        $vals = $null
         $setck = ''
-        if ($r.Headers['Set-Cookie']) { $setck = ([string]$r.Headers['Set-Cookie']) -replace '(?<=^|,\s)([A-Za-z0-9_.-]+)=([^;,]{0,3})[^;,]*', '$1=$2..' }
-        $jar = @($script:Sess.Cookies.GetCookies([uri]"$Mod/Agenda") | ForEach-Object { $_.Name }) -join '+'
-        $login = if ($r.Content -match 'id="loginForm"') { 'LOGINFORM' } elseif ($r.Content -match 'id="heading1"') { 'agenda' } else { 'otra' }
+        if ($resp.Headers.TryGetValues('Set-Cookie', [ref]$vals)) {
+            foreach ($sc in $vals) {
+                $first = ($sc -split ';')[0]
+                $i = $first.IndexOf('=')
+                if ($i -gt 0) {
+                    $name = $first.Substring(0, $i).Trim()
+                    $val = $first.Substring($i + 1)
+                    $dead = ($val -eq '') -or ($sc -match '(?i);\s*max-age=0') -or ($sc -match '(?i)expires=\w{3},\s*\d{2}[ -]\w{3}[ -](19[0-9]{2}|200[0-9])')
+                    if ($dead) { $script:Cookies.Remove($name) } else { $script:Cookies[$name] = $val }
+                    $mv = $val; if ($mv.Length -gt 3) { $mv = $mv.Substring(0, 3) + '..' }
+                    $flag = ''; if ($dead) { $flag = ' (BORRADA)' }
+                    $setck += " $name=$mv$flag;"
+                }
+            }
+        }
+
+        $loc = $null
+        if ($status -ge 300 -and $status -lt 400 -and $resp.Headers.Location) { $loc = $resp.Headers.Location.ToString() }
+        $bytes = $resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+        $text = [Text.Encoding]::UTF8.GetString($bytes)
+        $kind = 'otra'
+        if ($text -match 'id="loginForm"') { $kind = 'LOGINFORM' } elseif ($text -match 'id="heading1"') { $kind = 'agenda' }
         $short = ([uri]$url).AbsolutePath -replace '^/sBid/', ''
-        [void]$script:Trace.Add(('{0} {1} -> {2} {3}B {4} jar={5} set-cookie=[{6}]' -f $m, $short, [int]$r.StatusCode, $r.Content.Length, $login, $jar, $setck))
-    } catch { }
-    return $r.Content
+        $cn = ($script:Cookies.Keys) -join '+'
+        [void]$script:Trace.Add(('{0} {1} -> {2} {3}B {4} jar={5} set-cookie=[{6}]{7}' -f $method, $short, $status, $bytes.Length, $kind, $cn, $setck.Trim(), $(if ($loc) { " location=$loc" } else { '' })))
+        $script:LastResp = [pscustomobject]@{ Uri = $url; Status = $status; Len = $bytes.Length }
+        $resp.Dispose()
+
+        if ($loc) {
+            $url = (New-Object System.Uri (New-Object System.Uri $url), $loc).AbsoluteUri
+            $method = 'GET'; $send = $null
+            continue
+        }
+        if ($status -ge 400) { throw "HTTP $status en $short" }
+        return $text
+    }
+    throw 'Demasiadas redirecciones'
 }
 $script:Trace = New-Object System.Collections.ArrayList
 
 # Deja en el log lo necesario para entender por que sBID no reconoce la sesion (sin contrasenyas)
 function Diag([string]$what, [string]$html) {
     try {
-        $ck = @($script:Sess.Cookies.GetCookies([uri]"$Mod/Agenda") | ForEach-Object { $_.Name + '(' + $_.Path + ')' }) -join ', '
         $txt = ($html -replace '(?is)<script.*?</script>|<style.*?</style>|<[^>]+>', ' ') -replace '\s+', ' '
         if ($txt.Length -gt 120) { $txt = $txt.Substring(0, 120) }
         $lr = $script:LastResp
-        Log ("Diagnostico ({0}): url={1} status={2} bytes={3} cookies=[{4}] texto='{5}'" -f $what, $lr.Uri, $lr.Status, $lr.Len, $ck, $txt) 'warn'
+        Log ("Diagnostico ({0}): url={1} status={2} bytes={3} cookies=[{4}] texto='{5}'" -f $what, $lr.Uri, $lr.Status, $lr.Len, (($script:Cookies.Keys) -join '+'), $txt) 'warn'
         foreach ($t in $script:Trace) { Log ("  rastro: $t") 'warn' }
     } catch { }
 }
