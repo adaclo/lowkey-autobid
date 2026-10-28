@@ -7,83 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 
-const ACTS = [
-  ['101', '1.3. Participació en la gestió de recursos en xarxa identificant les restriccions de seguretat.'],
-  ['102', '1.4. Utilització d’aplicacions informàtiques per elaborar documentació tècnica.'],
-  ['103', '1.5. Utilització d’entorns de desenvolupament per editar, depurar i provar codi.'],
-  ['104', '2.4. Execució de consultes directes i procediments sobre la base de dades.'],
-  ['105', '2.8. Elaboració de la documentació associada a la gestió de les bases de dades.'],
-];
-const HOURS = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4];
-const hoursOptions = HOURS.map((h) => `<option value="${h === Math.floor(h) ? h.toFixed(1) : h}">${h}</option>`).join('');
-const ratingOptions = '<option value="">- Seleccionar -</option><option value="33">SENSE VALORACIÓ</option><option value="30">ADEQUADA</option><option value="29">MOLT ADEQUADA</option>';
-
-function startMock(pending) {
-  const state = { loggedIn: new Set(), saved: {}, reports: {}, pending: pending.slice(), logins: 0, rejectDaySave: false };
-  const fmt = (d) => `${d.slice(6, 8)}/${d.slice(4, 6)}/${d.slice(0, 4)}`;
-  const server = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://x');
-    const cookie = (req.headers.cookie || '').match(/JSESSIONID=(\w+)/);
-    const sid = cookie && cookie[1];
-    const send = (code, body, headers = {}) => {
-      res.writeHead(code, { 'Content-Type': 'text/html', ...headers });
-      res.end(body);
-    };
-    let raw = '';
-    req.on('data', (c) => (raw += c));
-    req.on('end', () => {
-      const body = new URLSearchParams(raw);
-      const authed = sid && state.loggedIn.has(sid);
-      if (u.pathname === '/sBid/modules/Login' && req.method === 'GET') return send(200, '<form id="loginForm"></form>', { 'Set-Cookie': 'JSESSIONID=abc123; Path=/sBid' });
-      if (u.pathname === '/sBid/modules/Login' && req.method === 'POST') {
-        state.logins++;
-        if (body.get('username') === 'alumne' && body.get('password') === 'secret' && body.get('moduleaction') === 'doLogin') {
-          state.loggedIn.add('rot789');
-          return send(302, '', { Location: '/sBid/modules/Agenda?moduleaction=show', 'Set-Cookie': 'JSESSIONID=rot789; Path=/sBid; Secure; HttpOnly' });
-        }
-        return send(200, '<form id="loginForm"></form>');
-      }
-      if (u.pathname === '/sBid/jsp/doLogout.jsp') {
-        state.loggedIn.clear();
-        return send(200, 'bye');
-      }
-      if (!authed || !req.headers.referer) return send(200, '<form id="loginForm"></form>');
-
-      if (u.pathname === '/sBid/modules/Agenda') {
-        const items = state.pending.slice(0, 3).map((p) =>
-          p.report
-            ? `<li><a href="/sBid/modules/ActivitatValoracioFct?moduleaction=show&amp;pk=${p.date}&amp;hash_code=h${p.date}">${fmt(p.date)}: Informe periòdic (1)</a></li>`
-            : `<li><a href="/sBid/modules/ActivitatFct?moduleaction=show&amp;codi_conveni=1&amp;data=${p.date}&amp;hash_code=h${p.date}">${fmt(p.date)}: Activitat diària del dossier (1)</a></li>`
-        );
-        return send(200, `<div id="heading1"><span class="badge">${state.pending.length}</span></div><div id="collapse1"><ul>${items.join('')}</ul></div>`);
-      }
-      if (u.pathname === '/sBid/modules/ActivitatFct' && req.method === 'GET') {
-        const acts = ACTS.map(([id, label]) => `<div>${label}</div><select name="inp_${id}">${hoursOptions}</select>`).join('');
-        return send(200, `<form id="workingForm"><input type="hidden" name="moduleaction" value=""><input type="hidden" name="data" value="${u.searchParams.get('data')}"><input type="hidden" name="hash_code" value="${u.searchParams.get('hash_code')}"><input type="hidden" name="horesConsignades" value="0"><div>Hores màximes:<br>4H</div>${acts}</form>`);
-      }
-      if (u.pathname === '/sBid/modules/ActivitatFct' && req.method === 'POST') {
-        const total = [...body.entries()].filter(([k]) => k.startsWith('inp_')).reduce((t, [, v]) => t + Number(v), 0);
-        if (state.rejectDaySave || body.get('moduleaction') !== 'save' || total > 4 || total !== Number(body.get('horesConsignades')) || body.get('hash_code') !== 'h' + body.get('data')) return send(500, 'no');
-        state.saved[body.get('data')] = Object.fromEntries([...body.entries()].filter(([k, v]) => k.startsWith('inp_') && v !== '0'));
-        state.pending = state.pending.filter((p) => p.report || p.date !== body.get('data'));
-        return send(200, 'ok');
-      }
-      if (u.pathname === '/sBid/modules/ActivitatValoracioFct' && req.method === 'GET') {
-        const sel = ACTS.map(([id]) => `<select name="inp_${id}">${ratingOptions}</select>`).join('');
-        return send(200, `<form id="workingForm"><input type="hidden" name="moduleaction"><input type="hidden" name="pk" value="${u.searchParams.get('pk')}">${sel}</form>`);
-      }
-      if (u.pathname === '/sBid/modules/ActivitatValoracioFct' && req.method === 'POST') {
-        state.reports[body.get('pk')] = [...body.entries()].filter(([k]) => k.startsWith('inp_')).map(([, v]) => v);
-        state.pending = state.pending.filter((p) => !(p.report && p.date === body.get('pk')));
-        return send(200, 'ok');
-      }
-      send(404, 'nf');
-    });
-  });
-  return new Promise((r) => server.listen(0, '127.0.0.1', () => r({ server, state, baseUrl: `http://127.0.0.1:${server.address().port}` })));
-}
-
-/*TESTS*/
+const { startMock } = require('../dev/mock-sbid.js');
 const SCRIPT = path.join(__dirname, '..', 'windows', 'sbid-daily.ps1');
 const winOnly = { skip: process.platform !== 'win32' && 'requiere Windows PowerShell' };
 const day = (date) => ({ date });
@@ -207,6 +131,104 @@ test('-Startup con salida redirigida: sin panel, mismo resultado', winOnly, asyn
     assert.equal(r.code, 0, r.out);
     assert.deepEqual(Object.keys(m.state.saved), ['20260601']);
     assert.match(r.out, /Arranque: espero 0s/);
+  } finally {
+    m.server.close();
+  }
+});
+
+// ---------------------------------------------------------------- setup.ps1 (asistente)
+const SETUP = path.join(__dirname, '..', 'windows', 'setup.ps1');
+
+function runSetup(m, { keys, inputs, env = {} }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sbid-setup-'));
+  const cfgFile = path.join(dir, 'config.ps1');
+  const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SETUP, '-ConfigPath', cfgFile, '-BaseUrl', m.baseUrl];
+  const e = { ...process.env, SBID_USER: 'alumne', SBID_PASS: 'secret', SBID_SETUP_KEYS: keys, SBID_SETUP_INPUT: inputs, ...env };
+  return new Promise((resolve) => execFile('powershell', args, { timeout: 120000, env: e }, (err, stdout, stderr) => resolve({ code: err ? err.code : 0, out: stdout + stderr, cfgFile })));
+}
+const answers = (...a) => a.join('|');
+const ENTER_ALL = answers('', '', '', '', '', '', '', '', '', '', '', '', 'n', 'n'); // 12 respuestas por defecto + no simular + no instalar
+
+test('setup: lee las actividades del usuario, genera config.ps1 y el script diario lo usa', winOnly, async () => {
+  const m = await startMock([day('20260601'), report('20260601'), day('20260602')]);
+  try {
+    const r = await runSetup(m, { keys: 'Spacebar,DownArrow,Spacebar,RightArrow,RightArrow,Enter', inputs: ENTER_ALL });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /Login correcto/);
+    assert.match(r.out, /5 en tu plan/);
+    assert.match(r.out, /Max\. por dia: 4 h/);
+    assert.match(r.out, /2 actividades elegidas/);
+    const cfg = fs.readFileSync(r.cfgFile, 'utf8');
+    assert.match(cfg, /'1\.3'\s*= 1/);
+    assert.match(cfg, /'1\.4'\s*= 3/);
+    assert.doesNotMatch(cfg, /'1\.5'/);
+    assert.match(cfg, /PasswordProtected = '[0-9a-f]{20,}/);
+    assert.doesNotMatch(cfg, /secret/, 'la contraseña no debe aparecer en claro');
+    assert.match(cfg, /Rating\s+= 'auto'/);
+    assert.match(cfg, /FillTodayAfter = '18:00'/);
+
+    // el config generado funciona con el script diario (contraseña cifrada incluida)
+    fs.writeFileSync(r.cfgFile, cfg.replace("Notify         = 'changes'", "Notify         = 'none'"), 'utf8');
+    const args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', SCRIPT, '-ConfigPath', r.cfgFile, '-LogFile', path.join(path.dirname(r.cfgFile), 'log.txt'), '-BaseUrl', m.baseUrl, '-Now', '2026-07-01T09:00:00'];
+    const d = await new Promise((resolve) => execFile('powershell', args, { timeout: 120000 }, (err, so, se) => resolve({ code: err ? err.code : 0, out: so + se })));
+    assert.equal(d.code, 0, d.out);
+    assert.deepEqual(Object.keys(m.state.saved).sort(), ['20260601', '20260602'], d.out);
+    for (const day of Object.values(m.state.saved)) {
+      assert.deepEqual(Object.keys(day).sort(), ['inp_101', 'inp_102'], 'solo las 2 actividades elegidas');
+      assert.equal(sumDay(day), 4);
+    }
+    assert.deepEqual(m.state.reports['20260601'], ['29', '29', '29', '29', '29']);
+  } finally {
+    m.server.close();
+  }
+});
+
+test('setup: Esc cancela y no escribe nada', winOnly, async () => {
+  const m = await startMock([day('20260601')]);
+  try {
+    const r = await runSetup(m, { keys: 'Escape', inputs: '|' }); // una respuesta vacia (palabras clave); una variable de entorno vacia no existe en Windows
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /Cancelado/);
+    assert.equal(fs.existsSync(r.cfgFile), false);
+  } finally {
+    m.server.close();
+  }
+});
+
+test('setup: palabras clave preseleccionan, fechas con rangos y contraseña en claro si se pide', winOnly, async () => {
+  const m = await startMock([day('20260601')]);
+  try {
+    // kw=seguretat -> marca 1.3; hours=3; min=1; acts=1-1; weekends=n; skip=rango; fillToday=no; reports=n; protect=n; panel=n; guardar; no sim; no instalar
+    const r = await runSetup(m, {
+      keys: 'Enter',
+      inputs: answers('seguretat', '3', '1', '1-1', 'n', '2026-12-24..2026-12-26, 2027-01-06', 'no', 'n', 'n', 'n', '', 'n', 'n'),
+    });
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /1 actividades coinciden/);
+    const cfg = fs.readFileSync(r.cfgFile, 'utf8');
+    assert.match(cfg, /HoursPerDay = 3/);
+    assert.match(cfg, /MinBlock\s+= 1/);
+    assert.match(cfg, /MinActs\s+= 1/);
+    assert.match(cfg, /MaxActs\s+= 1/);
+    assert.match(cfg, /'1\.3'\s*= 3/);
+    assert.match(cfg, /Password = 'secret'/);
+    assert.match(cfg, /SkipWeekends   = \$false/);
+    assert.match(cfg, /SkipDates\s+= @\('2026-12-24', '2026-12-25', '2026-12-26', '2027-01-06'\)/);
+    assert.match(cfg, /FillTodayAfter = ''/);
+    assert.match(cfg, /FillReports    = \$false/);
+  } finally {
+    m.server.close();
+  }
+});
+
+test('setup: login incorrecto con credenciales de entorno sale con error', winOnly, async () => {
+  const m = await startMock([day('20260601')]);
+  try {
+    const r = await runSetup(m, { keys: 'Enter', inputs: '', env: { SBID_PASS: 'mala' } });
+    assert.equal(r.code, 1);
+    assert.match(r.out, /usuario o contrasenya incorrectos/);
+    assert.equal(fs.existsSync(r.cfgFile), false);
+    assert.equal(m.state.logins, 1, 'un solo intento');
   } finally {
     m.server.close();
   }

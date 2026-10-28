@@ -13,10 +13,11 @@ Rellena las **activitats diàries** y los **informes periòdics** pendientes de 
 
 Al arrancar el PC entra en sBID con tu usuario, mira si hay días o informes pendientes y los rellena. Solo usa PowerShell: no hace falta Node ni instalar nada. Hace el login con peticiones directas, así que **guarda tus credenciales en un fichero local**.
 
-1. Descarga o clona el repo en una carpeta tuya.
-2. En `windows/`, copia `config.example.ps1` como `config.ps1` y edítalo (usuario, contraseña, actividades y pesos, días a saltar).
-3. Doble clic en **`1-probar.bat`**: comprueba el login, cuenta pendientes y enseña qué rellenaría, sin guardar nada.
-4. Doble clic en **`2-instalar.bat`**: lo deja en el arranque de Windows. Para quitarlo, `quitar.bat`.
+1. Descarga o clona el repo en una carpeta tuya (mejor fuera de OneDrive).
+2. Doble clic en **`0-configurar.bat`**: el **asistente**. Te pide usuario y contraseña, entra en sBID, **lee las actividades reales de tu plan** y te deja elegir con una lista de flechas cuáles rellenar y con qué peso (también horas por día, días a saltar, informes y valoración). Escribe `config.ps1` con la contraseña cifrada con tu cuenta de Windows, te ofrece una simulación y deja instalado el arranque automático. Se puede volver a ejecutar cuando cambie tu plan.
+3. Alternativa manual: copia `config.example.ps1` como `config.ps1`, edítalo y usa **`1-probar.bat`** (comprueba el login y enseña qué rellenaría, sin guardar nada) y **`2-instalar.bat`** (arranque de Windows). Para quitarlo, `quitar.bat`.
+
+En la lista del asistente: ↑/↓ te mueves, **Espacio** marca/desmarca, ←/→ cambian el peso (1-5), **A** marca todas, **N** ninguna, **Enter** continúa y **Esc** cancela.
 
 Desde entonces, cada vez que enciendes el PC se abre una ventana con un **panel de colores**: espera 45 s a que haya red, entra en sBID y va mostrando en vivo qué hace (estado, contadores, barra de progreso y las últimas acciones). Al terminar se cierra sola a los 6 s; si algo falla o se para, se queda 60 s para que lo leas (cualquier tecla la cierra antes). El resultado también queda en `windows/sbid-daily.log`.
 
@@ -39,7 +40,7 @@ Desde entonces, cada vez que enciendes el PC se abre una ventana con un **panel 
 
 `ver-panel.bat` enseña el panel con datos de mentira, sin entrar en sBID. Si prefieres que no abra ninguna ventana: `sbid-daily.ps1 -Install -Hidden` (en ese caso avisa con una notificación de Windows).
 
-- `windows/config.ps1` está en `.gitignore`. **No lo subas nunca**: es tu contraseña en claro. También puedes usar las variables de entorno `SBID_USER` y `SBID_PASS`. Protege el PC (clave de Windows, disco cifrado).
+- `windows/config.ps1` está en `.gitignore`: **no lo subas nunca**. Con el asistente la contraseña se guarda cifrada (`PasswordProtected`, DPAPI: solo se descifra con tu cuenta de Windows en ese PC); si la pones a mano en `Password` queda en claro. También puedes usar las variables de entorno `SBID_USER` y `SBID_PASS`. Protege el PC (clave de Windows, disco cifrado).
 - Por defecto rellena hasta ayer, y el día de hoy solo si el PC arranca después de `FillTodayAfter` (18:00). Salta fines de semana y `SkipDates`.
 - Tope `MaxPerRun` (60) por ejecución: un atraso grande se reparte en varios arranques.
 - Si el login falla **no reintenta** (para no bloquear tu cuenta); solo reintenta si no hay red.
@@ -87,7 +88,7 @@ El `hash_code` lo genera el servidor y se lee del enlace de la Agenda; los `inp_
 npm test
 ```
 
-Node solo hace falta para desarrollar: prueba el reparto de horas y ejecuta `windows/sbid-daily.ps1` contra un sBID simulado (solo en Windows). Usarlo no requiere Node.
+Node solo hace falta para desarrollar: prueba el reparto de horas y ejecuta `windows/sbid-daily.ps1` y el asistente `windows/setup.ps1` contra un sBID simulado (solo en Windows). Usarlo no requiere Node. Para probar el asistente a mano: `MOCK_ACTS=31 node dev/mock-sbid.js` (usuario `alumne`, contraseña `secret`) y `setup.ps1 -BaseUrl http://127.0.0.1:8765 -ConfigPath .\demo.ps1`.
 
 ## English
 

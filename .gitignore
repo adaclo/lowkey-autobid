@@ -1,3 +1,5 @@
 node_modules/
 windows/config.ps1
+windows/config.ps1.bak
+windows/sbid-setup.log
 *.log
